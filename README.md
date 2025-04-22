@@ -1,2 +1,11 @@
-# agentic-AI
-This repo will contains multiple AI agents.
+# visual-AI Vs generative-AI Vs agentic-AI
+
+| **Features**       | **Visual AI**                                                                                          | **Generative AI**                                                                                               | **Agentic AI**                                                                                                          |
+|--------------------|--------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| **Focus**          | It is an application of AI whose main aim is to make machines understand and analyze visual data like images and videos | It is an application of AI that creates new content such as images, videos and code to resemble human-made data | It is an application of AI that enables smart systems to make and execute decisions independently with minimal human input |
+| **Main Goal**      | To see and interpret the visual information like humans do                                              | To create new content such as images, videos, music, and code                                                   | To perform tasks, make decisions, think, plan and act independently                                                       |
+| **Key Technologies** | Computer Vision, Object Detection, Image Recognition, Autonomous Driving, Facial Recognition           | Transformer, LLMs (Large Language Models), GANs (Generative Adversarial Networks)                              | Autonomous Agents, NLP, Decision Making Algorithms, Planning and Scheduling Systems                                      |
+| **Core Models**    | CNN (Convolutional Neural Network), YOLO, Faster R-CNN, GANs, ViT (Vision Transformers)                 | GPT, BERT, GANs, DALL·E, Stable Diffusion                                                                      | Reinforcement Learning (RL), Planning Algorithms, LLM-based Agents, Multi-Agent Reinforcement Learning (MARL)            |
+| **Examples**       | • Self-driving cars identifying traffic signals<br>• Face detection in smartphones<br>• Medical imaging analysis | • ChatGPT (text, code generation)<br>• DALL·E (image generation)<br>• Jukebox (music generation)               | • Auto-GPT<br>• Siri / Google Assistant / Alexa<br>• LangChain Agents<br>• Tesla Autopilot<br>• AI Chatbots              |
+
+

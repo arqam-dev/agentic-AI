@@ -1,4 +1,4 @@
-This repository contains multiple AI agents designed to perform specific tasks. The purpose of this repository is to provide a centralized collection of intelligent agents for research, experimentation, and real-world applications. Users can explore, extend, and integrate these agents to build complex, agent-driven solutions.
+It is the  repository which contains multiple AI agents designed to perform specific tasks. The purpose of this repository is to provide a centralized collection of intelligent agents for research, experimentation, and real-world applications. Users can explore, extend, and integrate these agents to build complex, agent-driven solutions.
 
 # visual-AI Vs generative-AI Vs agentic-AI
 

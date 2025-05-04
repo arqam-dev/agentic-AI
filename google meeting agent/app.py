@@ -1,4 +1,4 @@
-from flask import Flask, redirect
+from flask import Flask, redirect, request
 import datetime
 import os
 import requests
@@ -14,7 +14,7 @@ from googleapiclient.errors import HttpError
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-change-me')
 
-# Configuration
+
 CLIENT_SECRETS_FILE = os.environ.get('GOOGLE_CREDENTIALS_FILE', 'credentials.json')
 TOKEN_FILE = 'token.json'
 SCOPES = [
@@ -25,7 +25,7 @@ SCOPES = [
 ]
 PAKISTAN_TZ = pytz.timezone('Asia/Karachi')
 
-# HTML/CSS Template
+
 BASE_STYLE = """
 <style>
     :root {
@@ -148,6 +148,12 @@ BASE_STYLE = """
         font-size: 0.9em;
     }
     
+    .attendee-list {
+        margin-top: 10px;
+        font-size: 0.9em;
+        color: #555;
+    }
+    
     .footer {
         text-align: center;
         margin-top: 30px;
@@ -171,6 +177,48 @@ BASE_STYLE = """
         margin: 20px 0;
     }
     
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+    
+    input[type="text"],
+    input[type="datetime-local"],
+    input[type="email"],
+    textarea,
+    select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: var(--border-radius);
+        font-size: 16px;
+    }
+    
+    textarea {
+        min-height: 100px;
+        resize: vertical;
+    }
+    
+    .attendee-inputs {
+        margin-bottom: 10px;
+    }
+    
+    .add-attendee-btn {
+        margin-bottom: 20px;
+        background-color: #f8f9fa;
+        color: var(--primary-color);
+        border: 1px solid var(--primary-color);
+    }
+    
+    .add-attendee-btn:hover {
+        background-color: #e8f0fe;
+    }
+    
     @media (max-width: 600px) {
         .container {
             padding: 20px;
@@ -178,6 +226,18 @@ BASE_STYLE = """
         }
     }
 </style>
+<script>
+    function addAttendeeField() {
+        const container = document.getElementById('attendee-fields');
+        const newField = document.createElement('div');
+        newField.className = 'form-group attendee-inputs';
+        newField.innerHTML = `
+            <label>Attendee Email</label>
+            <input type="email" name="attendees" placeholder="participant@example.com">
+        `;
+        container.appendChild(newField);
+    }
+</script>
 """
 
 BASE_HEADER = """
@@ -218,7 +278,7 @@ def render_page(title, content):
     {BASE_FOOTER}
     """
 
-# Calendar Service Functions
+
 def get_calendar_service():
     creds = None
     if os.path.exists(TOKEN_FILE):
@@ -255,17 +315,176 @@ def get_user_info(creds):
         print(f"Error getting user info: {e}")
         return {}
 
-# Routes
+
 @app.route('/')
 def index():
     content = """
     <div class="menu">
         <a href="/meetings" class="btn btn-primary">View All My Meetings</a>
-        <a href="/create_meeting" class="btn btn-secondary">Create Test Meeting</a>
+        <a href="/create_meeting_form" class="btn btn-secondary">Create New Meeting</a>
         <a href="/clear_token" class="btn btn-warning">Clear Authentication</a>
     </div>
     """
     return render_page("AI Calendar Agent", content)
+
+@app.route('/create_meeting_form')
+def create_meeting_form():
+    
+    default_start = (datetime.datetime.now(PAKISTAN_TZ) + datetime.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M')
+    default_end = (datetime.datetime.now(PAKISTAN_TZ) + datetime.timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M')
+    
+    content = f"""
+    <form method="POST" action="/create_meeting">
+        <div class="form-group">
+            <label for="title">Meeting Title</label>
+            <input type="text" id="title" name="title" required placeholder="Team Standup">
+        </div>
+        
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" placeholder="Meeting agenda..."></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label for="start_time">Start Time</label>
+            <input type="datetime-local" id="start_time" name="start_time" value="{default_start}" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="end_time">End Time</label>
+            <input type="datetime-local" id="end_time" name="end_time" value="{default_end}" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Attendees</label>
+            <div id="attendee-fields">
+                <div class="form-group attendee-inputs">
+                    <input type="email" name="attendees" placeholder="participant@example.com">
+                </div>
+            </div>
+            <button type="button" class="btn add-attendee-btn" onclick="addAttendeeField()">+ Add Another Attendee</button>
+        </div>
+        
+        <div class="form-group">
+            <button type="submit" class="btn btn-primary">Create Meeting</button>
+            <a href="/" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+    """
+    return render_page("Create New Meeting", content)
+
+@app.route('/create_meeting', methods=['POST'])
+def create_meeting():
+    try:
+       
+        title = request.form.get('title', 'New Meeting')
+        description = request.form.get('description', '')
+        start_time_str = request.form.get('start_time')
+        end_time_str = request.form.get('end_time')
+        attendees = request.form.getlist('attendees') 
+        
+        
+        if not start_time_str or not end_time_str:
+            raise ValueError("Start and end times are required")
+            
+        
+        start_dt_naive = datetime.datetime.strptime(start_time_str, '%Y-%m-%dT%H:%M')
+        end_dt_naive = datetime.datetime.strptime(end_time_str, '%Y-%m-%dT%H:%M')
+        
+       
+        start_dt = PAKISTAN_TZ.localize(start_dt_naive)
+        end_dt = PAKISTAN_TZ.localize(end_dt_naive)
+        
+       
+        if start_dt >= end_dt:
+            raise ValueError("End time must be after start time")
+
+        creds, service = get_calendar_service()
+        if not creds or not creds.valid:
+            return redirect('/')
+
+        
+        attendee_list = []
+        for email in attendees:
+            if email.strip():  
+                attendee_list.append({'email': email.strip()})
+
+        event = {
+            'summary': title,
+            'description': description,
+            'start': {
+                'dateTime': start_dt.isoformat(),
+                'timeZone': 'Asia/Karachi',
+            },
+            'end': {
+                'dateTime': end_dt.isoformat(),
+                'timeZone': 'Asia/Karachi',
+            },
+            'attendees': attendee_list,
+            'reminders': {
+                'useDefault': True,
+            },
+        }
+
+        created_event = service.events().insert(
+            calendarId='primary',
+            body=event,
+            sendUpdates='all'  
+        ).execute()
+
+        duration = end_dt - start_dt
+        duration_str = str(duration).split('.')[0]  
+        
+        
+        attendees_html = ""
+        if created_event.get('attendees'):
+            attendees_html = "<div class='attendee-list'><strong>Attendees:</strong><ul>"
+            for attendee in created_event['attendees']:
+                attendees_html += f"<li>{attendee['email']} ({attendee.get('responseStatus', 'no response')})</li>"
+            attendees_html += "</ul></div>"
+        
+        content = f"""
+        <div class="success-message">
+            <h3>Meeting Created Successfully!</h3>
+            <p><strong>Title:</strong> {created_event.get('summary')}</p>
+            <p><strong>Time:</strong> {start_dt.strftime('%d %b %Y, %I:%M %p')} to {end_dt.strftime('%I:%M %p')}</p>
+            <p><strong>Duration:</strong> {duration_str}</p>
+            {attendees_html}
+            <a href="{created_event.get('htmlLink')}" target="_blank" class="btn btn-secondary">View in Calendar</a>
+        </div>
+        <div class="menu">
+            <a href="/meetings" class="btn btn-primary">View All Meetings</a>
+            <a href="/create_meeting_form" class="btn btn-secondary">Create Another Meeting</a>
+            <a href="/" class="btn btn-primary">Back to Home</a>
+        </div>
+        """
+        return render_page("Meeting Created", content)
+
+    except ValueError as e:
+        error_content = f"""
+        <div class="error-message">
+            <h3>Invalid Input</h3>
+            <p>{str(e)}</p>
+        </div>
+        <div class="menu">
+            <a href="/create_meeting_form" class="btn btn-primary">Try Again</a>
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
+        """
+        return render_page("Error", error_content)
+        
+    except Exception as e:
+        error_content = f"""
+        <div class="error-message">
+            <h3>Error Creating Meeting</h3>
+            <p>{str(e)}</p>
+        </div>
+        <div class="menu">
+            <a href="/create_meeting_form" class="btn btn-primary">Try Again</a>
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
+        """
+        return render_page("Error", error_content)
 
 @app.route('/meetings')
 def meetings():
@@ -314,23 +533,36 @@ def meetings():
             else:
                 time_str = "No time specified"
             
+           
+            attendees_html = ""
+            if event.get('attendees'):
+                attendee_count = len(event['attendees'])
+                attendees_html = f"<div class='attendee-list'>{attendee_count} attendee(s)</div>"
+            
             meetings_html += f"""
             <div class="meeting-item">
-                <span><strong>{event.get('summary', 'No Title')}</strong></span>
-                <span class="meeting-time">{time_str}</span>
+                <div>
+                    <span><strong>{event.get('summary', 'No Title')}</strong></span>
+                    <span class="meeting-time">{time_str}</span>
+                    {attendees_html}
+                </div>
+                <a href="{event.get('htmlLink', '#')}" target="_blank" class="btn btn-secondary">View</a>
             </div>
             """
 
         content = f"""
         <h2>Welcome, {user_name}!</h2>
         <p>Email: {user_email}</p>
+        <div class="success-message">
+            <h3>Total Meetings Found: {len(events)}</h3>
+        </div>
         <h3>Your Meetings</h3>
         <div class="meeting-list">
             {meetings_html if events else "<p>No meetings found.</p>"}
         </div>
         <div class="menu">
             <a href="/" class="btn btn-primary">Back to Home</a>
-            <a href="/create_meeting" class="btn btn-secondary">Create New Meeting</a>
+            <a href="/create_meeting_form" class="btn btn-secondary">Create New Meeting</a>
         </div>
         """
         return render_page("Your Meetings", content)
@@ -341,66 +573,6 @@ def meetings():
             <p>Error: {str(e)}</p>
         </div>
         <a href="/" class="btn btn-primary">Back to Home</a>
-        """
-        return render_page("Error", error_content)
-
-@app.route('/create_meeting')
-def create_meeting():
-    try:
-        creds, service = get_calendar_service()
-        if not creds or not creds.valid:
-            return redirect('/')
-
-        # Create meeting 1 hour from now
-        start_dt = datetime.datetime.now(PAKISTAN_TZ) + datetime.timedelta(hours=1)
-        end_dt = start_dt + datetime.timedelta(hours=1)
-
-        event = {
-            'summary': 'Test Meeting from Flask App',
-            'description': 'Automatically created by the Flask Calendar Integration',
-            'start': {
-                'dateTime': start_dt.isoformat(),
-                'timeZone': 'Asia/Karachi',
-            },
-            'end': {
-                'dateTime': end_dt.isoformat(),
-                'timeZone': 'Asia/Karachi',
-            },
-            'reminders': {
-                'useDefault': True,
-            },
-        }
-
-        created_event = service.events().insert(
-            calendarId='primary',
-            body=event
-        ).execute()
-
-        content = f"""
-        <div class="success-message">
-            <h3>Meeting Created Successfully!</h3>
-            <p><strong>Title:</strong> {created_event.get('summary')}</p>
-            <p><strong>Time:</strong> {start_dt.strftime('%d %b %Y, %I:%M %p')}</p>
-            <p><strong>Duration:</strong> 1 hour</p>
-            <a href="{created_event.get('htmlLink')}" target="_blank" class="btn btn-secondary">View in Calendar</a>
-        </div>
-        <div class="menu">
-            <a href="/meetings" class="btn btn-primary">View All Meetings</a>
-            <a href="/" class="btn btn-primary">Back to Home</a>
-        </div>
-        """
-        return render_page("Meeting Created", content)
-
-    except Exception as e:
-        error_content = f"""
-        <div class="error-message">
-            <h3>Error Creating Meeting</h3>
-            <p>{str(e)}</p>
-        </div>
-        <div class="menu">
-            <a href="/" class="btn btn-primary">Back to Home</a>
-            <a href="/meetings" class="btn btn-secondary">View Meetings</a>
-        </div>
         """
         return render_page("Error", error_content)
 

@@ -85,9 +85,8 @@ BASE_STYLE = """
     }
     
     .btn {
-        display: block;
-        padding: 12px 20px;
-        background-color: var(--primary-color);
+        display: inline-block;
+        padding: 10px 15px;
         color: white;
         text-decoration: none;
         border-radius: var(--border-radius);
@@ -97,6 +96,7 @@ BASE_STYLE = """
         box-shadow: var(--box-shadow);
         border: none;
         cursor: pointer;
+        margin: 2px;
     }
     
     .btn:hover {
@@ -135,17 +135,29 @@ BASE_STYLE = """
     
     .meeting-item {
         padding: 15px;
-        margin-bottom: 10px;
+        margin-bottom: 15px;
         background: var(--light-color);
         border-radius: var(--border-radius);
         display: flex;
         justify-content: space-between;
         align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .meeting-details {
+        flex: 1;
+        min-width: 200px;
     }
     
     .meeting-time {
         color: #666;
         font-size: 0.9em;
+    }
+    
+    .meeting-actions {
+        display: flex;
+        gap: 5px;
+        margin-top: 10px;
     }
     
     .attendee-list {
@@ -224,6 +236,15 @@ BASE_STYLE = """
             padding: 20px;
             margin: 20px;
         }
+        
+        .meeting-item {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .meeting-actions {
+            align-self: flex-end;
+        }
     }
 </style>
 <script>
@@ -236,6 +257,10 @@ BASE_STYLE = """
             <input type="email" name="attendees" placeholder="participant@example.com">
         `;
         container.appendChild(newField);
+    }
+    
+    function confirmDelete(eventId) {
+        return confirm('Are you sure! you want to delete this meeting?');
     }
 </script>
 """
@@ -278,7 +303,6 @@ def render_page(title, content):
     {BASE_FOOTER}
     """
 
-
 def get_calendar_service():
     creds = None
     if os.path.exists(TOKEN_FILE):
@@ -315,7 +339,6 @@ def get_user_info(creds):
         print(f"Error getting user info: {e}")
         return {}
 
-
 @app.route('/')
 def index():
     content = """
@@ -329,7 +352,6 @@ def index():
 
 @app.route('/create_meeting_form')
 def create_meeting_form():
-    
     default_start = (datetime.datetime.now(PAKISTAN_TZ) + datetime.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M')
     default_end = (datetime.datetime.now(PAKISTAN_TZ) + datetime.timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M')
     
@@ -376,26 +398,21 @@ def create_meeting_form():
 @app.route('/create_meeting', methods=['POST'])
 def create_meeting():
     try:
-       
         title = request.form.get('title', 'New Meeting')
         description = request.form.get('description', '')
         start_time_str = request.form.get('start_time')
         end_time_str = request.form.get('end_time')
-        attendees = request.form.getlist('attendees') 
-        
+        attendees = request.form.getlist('attendees')
         
         if not start_time_str or not end_time_str:
             raise ValueError("Start and end times are required")
             
-        
         start_dt_naive = datetime.datetime.strptime(start_time_str, '%Y-%m-%dT%H:%M')
         end_dt_naive = datetime.datetime.strptime(end_time_str, '%Y-%m-%dT%H:%M')
         
-       
         start_dt = PAKISTAN_TZ.localize(start_dt_naive)
         end_dt = PAKISTAN_TZ.localize(end_dt_naive)
         
-       
         if start_dt >= end_dt:
             raise ValueError("End time must be after start time")
 
@@ -403,10 +420,9 @@ def create_meeting():
         if not creds or not creds.valid:
             return redirect('/')
 
-        
         attendee_list = []
         for email in attendees:
-            if email.strip():  
+            if email.strip():
                 attendee_list.append({'email': email.strip()})
 
         event = {
@@ -429,12 +445,11 @@ def create_meeting():
         created_event = service.events().insert(
             calendarId='primary',
             body=event,
-            sendUpdates='all'  
+            sendUpdates='all'
         ).execute()
 
         duration = end_dt - start_dt
-        duration_str = str(duration).split('.')[0]  
-        
+        duration_str = str(duration).split('.')[0]
         
         attendees_html = ""
         if created_event.get('attendees'):
@@ -533,7 +548,6 @@ def meetings():
             else:
                 time_str = "No time specified"
             
-           
             attendees_html = ""
             if event.get('attendees'):
                 attendee_count = len(event['attendees'])
@@ -541,12 +555,17 @@ def meetings():
             
             meetings_html += f"""
             <div class="meeting-item">
-                <div>
+                <div class="meeting-details">
                     <span><strong>{event.get('summary', 'No Title')}</strong></span>
                     <span class="meeting-time">{time_str}</span>
                     {attendees_html}
                 </div>
-                <a href="{event.get('htmlLink', '#')}" target="_blank" class="btn btn-secondary">View</a>
+                <div class="meeting-actions">
+                    <a href="{event.get('htmlLink', '#')}" target="_blank" class="btn btn-secondary">View</a>
+                    <form method="POST" action="/delete_meeting/{event['id']}" onsubmit="return confirmDelete('{event['id']}')">
+                        <button type="submit" class="btn btn-warning">Delete</button>
+                    </form>
+                </div>
             </div>
             """
 
@@ -573,6 +592,68 @@ def meetings():
             <p>Error: {str(e)}</p>
         </div>
         <a href="/" class="btn btn-primary">Back to Home</a>
+        """
+        return render_page("Error", error_content)
+
+@app.route('/delete_meeting/<event_id>', methods=['POST'])
+def delete_meeting(event_id):
+    try:
+        creds, service = get_calendar_service()
+        if not creds or not creds.valid:
+            return redirect('/')
+
+        service.events().delete(
+            calendarId='primary',
+            eventId=event_id,
+            sendUpdates='all'
+        ).execute()
+
+        content = f"""
+        <div class="success-message">
+            <h3>Meeting Deleted Successfully!</h3>
+            <p>The meeting has been removed from your calendar and attendees have been notified.</p>
+        </div>
+        <div class="menu">
+            <a href="/meetings" class="btn btn-primary">Back to Meetings</a>
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
+        """
+        return render_page("Meeting Deleted", content)
+
+    except HttpError as error:
+        if error.resp.status == 404:
+            error_content = f"""
+            <div class="error-message">
+                <h3>Meeting Not Found</h3>
+                <p>The meeting you tried to delete doesn't exist or was already deleted.</p>
+            </div>
+            """
+        else:
+            error_content = f"""
+            <div class="error-message">
+                <h3>Error Deleting Meeting</h3>
+                <p>{str(error)}</p>
+            </div>
+            """
+        
+        error_content += """
+        <div class="menu">
+            <a href="/meetings" class="btn btn-primary">Back to Meetings</a>
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
+        """
+        return render_page("Error", error_content)
+        
+    except Exception as e:
+        error_content = f"""
+        <div class="error-message">
+            <h3>Error Deleting Meeting</h3>
+            <p>{str(e)}</p>
+        </div>
+        <div class="menu">
+            <a href="/meetings" class="btn btn-primary">Back to Meetings</a>
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
         """
         return render_page("Error", error_content)
 

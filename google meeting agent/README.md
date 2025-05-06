@@ -1,4 +1,4 @@
-# Google Calendar Agent 📅
+# 📅 Google Calendar Agent 
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![Flask](https://img.shields.io/badge/Flask-2.0+-green.svg)

@@ -231,6 +231,14 @@ BASE_STYLE = """
         background-color: #e8f0fe;
     }
     
+    .search-form {
+        margin-bottom: 30px;
+    }
+    
+    .search-results {
+        margin-top: 20px;
+    }
+    
     @media (max-width: 600px) {
         .container {
             padding: 20px;
@@ -260,7 +268,7 @@ BASE_STYLE = """
     }
     
     function confirmDelete(eventId) {
-        return confirm('Are you sure! you want to delete this meeting?');
+        return confirm('Are you sure you want to delete this meeting?');
     }
 </script>
 """
@@ -345,6 +353,7 @@ def index():
     <div class="menu">
         <a href="/meetings" class="btn btn-primary">View All My Meetings</a>
         <a href="/create_meeting_form" class="btn btn-secondary">Create New Meeting</a>
+        <a href="/search_meetings_form" class="btn btn-primary">Search Meetings</a>
         <a href="/clear_token" class="btn btn-warning">Clear Authentication</a>
     </div>
     """
@@ -501,6 +510,338 @@ def create_meeting():
         """
         return render_page("Error", error_content)
 
+@app.route('/edit_meeting_form/<event_id>')
+def edit_meeting_form(event_id):
+    try:
+        creds, service = get_calendar_service()
+        if not creds or not creds.valid:
+            return redirect('/')
+
+        event = service.events().get(
+            calendarId='primary',
+            eventId=event_id
+        ).execute()
+
+        start = event.get('start', {}).get('dateTime', '')
+        end = event.get('end', {}).get('dateTime', '')
+        
+        if start:
+            start_dt = datetime.datetime.fromisoformat(start.replace('Z', '+00:00')).astimezone(PAKISTAN_TZ)
+            start_str = start_dt.strftime('%Y-%m-%dT%H:%M')
+        else:
+            start_str = (datetime.datetime.now(PAKISTAN_TZ) + datetime.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M')
+            
+        if end:
+            end_dt = datetime.datetime.fromisoformat(end.replace('Z', '+00:00')).astimezone(PAKISTAN_TZ)
+            end_str = end_dt.strftime('%Y-%m-%dT%H:%M')
+        else:
+            end_str = (datetime.datetime.now(PAKISTAN_TZ) + datetime.timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M')
+
+        attendees = event.get('attendees', [])
+        attendee_fields = ""
+        for attendee in attendees:
+            if attendee.get('email'):
+                attendee_fields += f"""
+                <div class="form-group attendee-inputs">
+                    <input type="email" name="attendees" value="{attendee['email']}">
+                </div>
+                """
+        if not attendee_fields:
+            attendee_fields = """
+            <div class="form-group attendee-inputs">
+                <input type="email" name="attendees" placeholder="participant@example.com">
+            </div>
+            """
+
+        content = f"""
+        <form method="POST" action="/edit_meeting/{event_id}">
+            <div class="form-group">
+                <label for="title">Meeting Title</label>
+                <input type="text" id="title" name="title" value="{event.get('summary', '')}" required placeholder="Team Standup">
+            </div>
+            
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea id="description" name="description" placeholder="Meeting agenda...">{event.get('description', '')}</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="start_time">Start Time</label>
+                <input type="datetime-local" id="start_time" name="start_time" value="{start_str}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="end_time">End Time</label>
+                <input type="datetime-local" id="end_time" name="end_time" value="{end_str}" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Attendees</label>
+                <div id="attendee-fields">
+                    {attendee_fields}
+                </div>
+                <button type="button" class="btn add-attendee-btn" onclick="addAttendeeField()">+ Add Another Attendee</button>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary">Update Meeting</button>
+                <a href="/meetings" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+        """
+        return render_page("Edit Meeting", content)
+
+    except HttpError as error:
+        error_content = f"""
+        <div class="error-message">
+            <h3>Error Loading Meeting</h3>
+            <p>{str(error)}</p>
+        </div>
+        <div class="menu">
+            <a href="/meetings" class="btn btn-primary">Back to Meetings</a>
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
+        """
+        return render_page("Error", error_content)
+        
+    except Exception as e:
+        error_content = f"""
+        <div class="error-message">
+            <h3>Error Loading Meeting</h3>
+            <p>{str(e)}</p>
+        </div>
+        <div class="menu">
+            <a href="/meetings" class="btn btn-primary">Back to Meetings</a>
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
+        """
+        return render_page("Error", error_content)
+
+@app.route('/edit_meeting/<event_id>', methods=['POST'])
+def edit_meeting(event_id):
+    try:
+        title = request.form.get('title', 'New Meeting')
+        description = request.form.get('description', '')
+        start_time_str = request.form.get('start_time')
+        end_time_str = request.form.get('end_time')
+        attendees = request.form.getlist('attendees')
+        
+        if not start_time_str or not end_time_str:
+            raise ValueError("Start and end times are required")
+            
+        start_dt_naive = datetime.datetime.strptime(start_time_str, '%Y-%m-%dT%H:%M')
+        end_dt_naive = datetime.datetime.strptime(end_time_str, '%Y-%m-%dT%H:%M')
+        
+        start_dt = PAKISTAN_TZ.localize(start_dt_naive)
+        end_dt = PAKISTAN_TZ.localize(end_dt_naive)
+        
+        if start_dt >= end_dt:
+            raise ValueError("End time must be after start time")
+
+        creds, service = get_calendar_service()
+        if not creds or not creds.valid:
+            return redirect('/')
+
+        existing_event = service.events().get(
+            calendarId='primary',
+            eventId=event_id
+        ).execute()
+
+        attendee_list = []
+        for email in attendees:
+            if email.strip():
+                attendee_list.append({'email': email.strip()})
+
+        updated_event = {
+            'summary': title,
+            'description': description,
+            'start': {
+                'dateTime': start_dt.isoformat(),
+                'timeZone': 'Asia/Karachi',
+            },
+            'end': {
+                'dateTime': end_dt.isoformat(),
+                'timeZone': 'Asia/Karachi',
+            },
+            'attendees': attendee_list,
+            
+            'location': existing_event.get('location', ''),
+            'reminders': existing_event.get('reminders', {'useDefault': True}),
+        }
+
+        updated_event = service.events().update(
+            calendarId='primary',
+            eventId=event_id,
+            body=updated_event,
+            sendUpdates='all'
+        ).execute()
+
+        duration = end_dt - start_dt
+        duration_str = str(duration).split('.')[0]
+        
+        attendees_html = ""
+        if updated_event.get('attendees'):
+            attendees_html = "<div class='attendee-list'><strong>Attendees:</strong><ul>"
+            for attendee in updated_event['attendees']:
+                attendees_html += f"<li>{attendee['email']} ({attendee.get('responseStatus', 'no response')})</li>"
+            attendees_html += "</ul></div>"
+        
+        content = f"""
+        <div class="success-message">
+            <h3>Meeting Updated Successfully!</h3>
+            <p><strong>Title:</strong> {updated_event.get('summary')}</p>
+            <p><strong>Time:</strong> {start_dt.strftime('%d %b %Y, %I:%M %p')} to {end_dt.strftime('%I:%M %p')}</p>
+            <p><strong>Duration:</strong> {duration_str}</p>
+            {attendees_html}
+            <a href="{updated_event.get('htmlLink')}" target="_blank" class="btn btn-secondary">View in Calendar</a>
+        </div>
+        <div class="menu">
+            <a href="/meetings" class="btn btn-primary">View All Meetings</a>
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
+        """
+        return render_page("Meeting Updated", content)
+
+    except ValueError as e:
+        error_content = f"""
+        <div class="error-message">
+            <h3>Invalid Input</h3>
+            <p>{str(e)}</p>
+        </div>
+        <div class="menu">
+            <a href="/edit_meeting_form/{event_id}" class="btn btn-primary">Try Again</a>
+            <a href="/meetings" class="btn btn-secondary">Back to Meetings</a>
+        </div>
+        """
+        return render_page("Error", error_content)
+        
+    except Exception as e:
+        error_content = f"""
+        <div class="error-message">
+            <h3>Error Updating Meeting</h3>
+            <p>{str(e)}</p>
+        </div>
+        <div class="menu">
+            <a href="/edit_meeting_form/{event_id}" class="btn btn-primary">Try Again</a>
+            <a href="/meetings" class="btn btn-secondary">Back to Meetings</a>
+        </div>
+        """
+        return render_page("Error", error_content)
+
+@app.route('/search_meetings_form')
+def search_meetings_form():
+    content = """
+    <form method="GET" action="/search_meetings" class="search-form">
+        <div class="form-group">
+            <label for="query">Search Meetings</label>
+            <input type="text" id="query" name="query" required placeholder="Enter keyword or phrase">
+        </div>
+        
+        <div class="form-group">
+            <button type="submit" class="btn btn-primary">Search</button>
+            <a href="/meetings" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+    """
+    return render_page("Search Meetings", content)
+
+@app.route('/search_meetings')
+def search_meetings():
+    try:
+        query = request.args.get('query', '')
+        if not query:
+            return redirect('/search_meetings_form')
+
+        creds, service = get_calendar_service()
+        if not creds or not creds.valid:
+            return redirect('/')
+
+        now = datetime.datetime.now(PAKISTAN_TZ)
+        time_min = (now - datetime.timedelta(days=365)).isoformat()
+        time_max = (now + datetime.timedelta(days=365)).isoformat()
+
+        try:
+            events_result = service.events().list(
+                calendarId='primary',
+                timeMin=time_min,
+                timeMax=time_max,
+                maxResults=2500,
+                singleEvents=True,
+                orderBy='startTime',
+                q=query
+            ).execute()
+            events = events_result.get('items', [])
+        except HttpError as error:
+            error_content = f"""
+            <div class="error-message">
+                <p>Calendar API Error: {error}</p>
+            </div>
+            <a href="/" class="btn btn-primary">Back to Home</a>
+            """
+            return render_page("Error", error_content)
+
+        meetings_html = ""
+        for event in events:
+            start = event.get('start', {})
+            if 'dateTime' in start:
+                dt = datetime.datetime.fromisoformat(start['dateTime'].replace('Z', '+00:00'))
+                dt = dt.astimezone(PAKISTAN_TZ)
+                time_str = dt.strftime('%d %b %Y, %I:%M %p')
+            elif 'date' in start:
+                dt = datetime.datetime.fromisoformat(start['date'])
+                time_str = dt.strftime('%d %b %Y')
+            else:
+                time_str = "No time specified"
+            
+            attendees_html = ""
+            if event.get('attendees'):
+                attendee_count = len(event['attendees'])
+                attendees_html = f"<div class='attendee-list'>{attendee_count} attendee(s)</div>"
+            
+            meetings_html += f"""
+            <div class="meeting-item">
+                <div class="meeting-details">
+                    <span><strong>{event.get('summary', 'No Title')}</strong></span>
+                    <span class="meeting-time">{time_str}</span>
+                    {attendees_html}
+                </div>
+                <div class="meeting-actions">
+                    <a href="{event.get('htmlLink', '#')}" target="_blank" class="btn btn-secondary">View</a>
+                    <a href="/edit_meeting_form/{event['id']}" class="btn btn-primary">Edit</a>
+                    <form method="POST" action="/delete_meeting/{event['id']}" onsubmit="return confirmDelete('{event['id']}')">
+                        <button type="submit" class="btn btn-warning">Delete</button>
+                    </form>
+                </div>
+            </div>
+            """
+
+        content = f"""
+        <h2>Search Results for: "{query}"</h2>
+        <div class="search-results">
+            <div class="success-message">
+                <h3>Total Meetings Found: {len(events)}</h3>
+            </div>
+            <div class="meeting-list">
+                {meetings_html if events else "<p>No matching meetings found.</p>"}
+            </div>
+        </div>
+        <div class="menu">
+            <a href="/search_meetings_form" class="btn btn-primary">New Search</a>
+            <a href="/meetings" class="btn btn-secondary">View All Meetings</a>
+            <a href="/" class="btn btn-primary">Back to Home</a>
+        </div>
+        """
+        return render_page("Search Results", content)
+
+    except Exception as e:
+        error_content = f"""
+        <div class="error-message">
+            <p>Error: {str(e)}</p>
+        </div>
+        <a href="/" class="btn btn-primary">Back to Home</a>
+        """
+        return render_page("Error", error_content)
+
 @app.route('/meetings')
 def meetings():
     try:
@@ -562,6 +903,7 @@ def meetings():
                 </div>
                 <div class="meeting-actions">
                     <a href="{event.get('htmlLink', '#')}" target="_blank" class="btn btn-secondary">View</a>
+                    <a href="/edit_meeting_form/{event['id']}" class="btn btn-primary">Edit</a>
                     <form method="POST" action="/delete_meeting/{event['id']}" onsubmit="return confirmDelete('{event['id']}')">
                         <button type="submit" class="btn btn-warning">Delete</button>
                     </form>
@@ -582,6 +924,7 @@ def meetings():
         <div class="menu">
             <a href="/" class="btn btn-primary">Back to Home</a>
             <a href="/create_meeting_form" class="btn btn-secondary">Create New Meeting</a>
+            <a href="/search_meetings_form" class="btn btn-primary">Search Meetings</a>
         </div>
         """
         return render_page("Your Meetings", content)
@@ -622,7 +965,7 @@ def delete_meeting(event_id):
 
     except HttpError as error:
         if error.resp.status == 404:
-            error_content = f"""
+                        error_content = f"""
             <div class="error-message">
                 <h3>Meeting Not Found</h3>
                 <p>The meeting you tried to delete doesn't exist or was already deleted.</p>
@@ -664,4 +1007,6 @@ def clear_token():
     return redirect('/')
 
 if __name__ == '__main__':
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  
     app.run(debug=True, port=5000)
+                

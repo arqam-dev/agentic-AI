@@ -41,4 +41,3 @@ model= Pipeline([
     ('classifier',MultinomialNB())
 ])
 model.fit(texts, labels)
-

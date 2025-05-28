@@ -3,11 +3,12 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 import re
+import tkinter as tk
+from tkinter import messagebox
+import threading
 
 app = Flask(__name__)
-
-
-texts = [
+sample_texts = [
     # spam
     "Win money now!", "Limited time offer!", "Call this number now",
     "Congratulations, you've won a prize!", "Free gift card waiting for you",
@@ -30,17 +31,15 @@ texts = [
     "Here are the meeting notes", "Can you help with this task?",
     "Thanks for your help with this"
 ]
+labels = [1] * 20 + [0] * 20  
 
-labels = [1] * 20 + [0] * 20  # 1 = spam, 0 = ham
-
-# Model pipeline
-model = Pipeline([
+spam_detector = Pipeline([
     ('vectorizer', CountVectorizer(analyzer='word', ngram_range=(1, 2))),
     ('tfidf', TfidfTransformer()),
     ('classifier', MultinomialNB())
 ])
 
-model.fit(texts, labels)
+spam_detector.fit(sample_texts, labels)
 
 def extract_spam_features(text):
     """Extra spam indicators"""
@@ -55,7 +54,7 @@ def extract_spam_features(text):
     }
     return features
 
-@app.route('/predict', methods=['GET', 'POST'])
+@app.route('/predict', methods=['POST'])
 def predict():
     if request.method == 'POST':
         insert_text = request.json.get('text', '')

@@ -1,5 +1,4 @@
 sample_texts = [
-
     #spam
     "Win money now!", "Limited time offer!", "Call this number now",
     "Congratulations, you've won a prize!", "Free gift card waiting for you",
@@ -22,5 +21,4 @@ sample_texts = [
     "Here are the meeting notes", "Can you help with this task?",
     "Thanks for your help with this"
 ]
-
 labels = [1] * 20 + [0] * 20

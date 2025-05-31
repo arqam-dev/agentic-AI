@@ -1,5 +1,5 @@
 sample_texts = [
-    #spam
+    #spam data
     "Win money now!", "Limited time offer!", "Call this number now",
     "Congratulations, you've won a prize!", "Free gift card waiting for you",
     "Click here to claim your reward", "You're our lucky winner!",
@@ -9,7 +9,7 @@ sample_texts = [
     "Exclusive deal for selected customers", "Your account has been compromised",
     "Urgent: action required", "Final notice", "You've been selected",
     "Limited seats available",
-    #ham
+    #ham data
     "Hello, how are you?", "Let's meet tomorrow", "Please find the report attached",
     "The meeting is scheduled for 2pm", "I'll send you the documents soon",
     "Thanks for your email", "Looking forward to our discussion",

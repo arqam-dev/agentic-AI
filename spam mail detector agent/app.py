@@ -9,7 +9,7 @@ from feature_extraction import extract_features
 from groq import Groq
 
 app = Flask(__name__)
-groq_api_key = "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"  
+groq_api_key = "gsk_pqyx6NkPgYWq5V3CTxHwWGdy************b3FYMXLmFBfEQ0YTmkDc1ON6bKEE"  
 client = Groq(api_key=groq_api_key)
 rephrase_count = 0
 

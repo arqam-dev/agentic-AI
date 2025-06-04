@@ -9,20 +9,30 @@ from feature_extraction import extract_features
 from groq import Groq
 
 app = Flask(__name__)
-groq_api_key = "gsk_pqyx6NkPgYWq5V3CTxHwWGdy************b3FYMXLmFBfEQ0YTmkDc1ON6bKEE"  
+groq_api_key = "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"  
 client = Groq(api_key=groq_api_key)
 rephrase_count = 0
 
-def rephrase_with_groq(text):
+def rephrase_with_groq(text,mode= "subject"):
     global rephrase_count
-    if rephrase_count >= 4:
+    if rephrase_count > 3:
         return "Rephrase limit reached"
+    if mode == "subject":
+        prompt = (
+            f"Rephrase the following email subject to be short, professional, and title-style. "
+            f"Keep it under 7 words and avoid turning it into a full sentence: {text}"
+        )
+    else:
+        prompt = (
+            f"Rephrase the following email body while keeping the meaning intact. "
+            f"Improve clarity and grammar, but don't shorten it too much: {text}"
+        )
     try:
         response = client.chat.completions.create(
             model="llama3-70b-8192",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that rephrases text."},
-                {"role": "user", "content": f"Please rephrase this: {text}"}
+                {"role": "user", "content":prompt}
             ]
         )
         rephrase_count += 1
@@ -78,11 +88,11 @@ def run_gui():
         body = body_input.get("1.0", "end").strip()
 
         if not subject and not body:
-            messagebox.showerror("Error", "Please enter subject or body.")
+            messagebox.showerror("Error", "Please Enter Subject or Body.")
             return
 
-        rephrased_subject = rephrase_with_groq(subject)
-        rephrased_body = rephrase_with_groq(body)
+        rephrased_subject = rephrase_with_groq(subject,mode="subject")
+        rephrased_body = rephrase_with_groq(body,mode="body")
 
         rephrase_output_subject.delete(0, tk.END)
         rephrase_output_subject.insert(0, rephrased_subject)
@@ -102,18 +112,18 @@ def run_gui():
         rephrased_combined_prob = rephrased["combined"]["confidence"]
 
         message = (
-            f"Original Subject: {original['subject']['prediction']} ({original_subject_prob})\n"
-            f"Original Body: {original['body']['prediction']} ({original_body_prob})\n"
-            f"Original Combined: {original['combined']['prediction']} ({original_combined_prob})\n\n"
-            f"Rephrased Subject: {rephrased['subject']['prediction']} ({rephrased_subject_prob})\n"
-            f"Rephrased Body: {rephrased['body']['prediction']} ({rephrased_body_prob})\n"
-            f"Rephrased Combined: {rephrased['combined']['prediction']} ({rephrased_combined_prob})\n\n"
-            f"Rephrases used: {rephrase_count}/4"
+            f"Original Input Subject: {original['subject']['prediction']} ({original_subject_prob})\n"
+            f"Original Input Body: {original['body']['prediction']} ({original_body_prob})\n"
+            f"Original Input Combined: {original['combined']['prediction']} ({original_combined_prob})\n\n"
+            f"Updated Subject: {rephrased['subject']['prediction']} ({rephrased_subject_prob})\n"
+            f"Updated Body: {rephrased['body']['prediction']} ({rephrased_body_prob})\n"
+            f"Updated Combined: {rephrased['combined']['prediction']} ({rephrased_combined_prob})\n\n"
+            f"Rephrases used: {rephrase_count}/3"
         )
-        messagebox.showinfo("Spam Detection", message)
+        messagebox.showinfo("Spam Detection Results", message)
 
     window = tk.Tk()
-    window.title("Email Spam Detector with Semantic Rephrasing")
+    window.title("Email Spam Detector")
 
     frame = tk.Frame(window)
     frame.pack(padx=10, pady=10)
@@ -122,7 +132,7 @@ def run_gui():
     subject_input = tk.Entry(frame, width=60)
     subject_input.grid(row=1, column=0, padx=5, pady=5)
 
-    tk.Label(frame, text="Rephrased Subject:").grid(row=0, column=1, sticky="w")
+    tk.Label(frame, text="Updated Subject:").grid(row=0, column=1, sticky="w")
     rephrase_output_subject = tk.Entry(frame, width=60)
     rephrase_output_subject.grid(row=1, column=1, padx=5, pady=5)
 
@@ -130,12 +140,14 @@ def run_gui():
     body_input = tk.Text(frame, width=60, height=10)
     body_input.grid(row=3, column=0, padx=5, pady=5)
 
-    tk.Label(frame, text="Rephrased Body:").grid(row=2, column=1, sticky="w")
+    tk.Label(frame, text="Updated Body:").grid(row=2, column=1, sticky="w")
     rephrase_output_body = tk.Text(frame, width=60, height=10)
     rephrase_output_body.grid(row=3, column=1, padx=5, pady=5)
 
-    tk.Button(window, text="Submit & Rephrase", command=check_spam).pack(pady=10)
+    tk.Button(window, text="Submit & Update", command=check_spam).pack(pady=10)
+
     window.mainloop()
+
 if __name__ == '__main__':
     threading.Thread(target=lambda: app.run(debug=False, use_reloader=False)).start()
     run_gui()
